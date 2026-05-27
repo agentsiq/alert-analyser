@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-analyser
+  namespace: ${NAMESPACE:-ai-agents}
+  labels:
+    app: alert-analyser
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alert-analyser
+  template:
+    metadata:
+      labels:
+        app: alert-analyser
+    spec:
+      containers:
+        - name: alert-analyser
+          image: IMAGE_TAG
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: alert-analyser-secrets
+                  key: database-url
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: alert-analyser-secrets
+                  key: encryption-key
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi

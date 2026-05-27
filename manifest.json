@@ -1,0 +1,8 @@
+{
+  "name": "Alert Analyser",
+  "slug": "alert-analyser",
+  "description": "Analyses OpsGenie/JSM alert data, separates genuine incidents from automated noise, and provides suppression recommendations to reduce alert fatigue.",
+  "version": "1.0.0",
+  "invoke_url": "http://alert-analyser:8080",
+  "capabilities": ["alert-triage", "noise-classification", "suppression-recommendations", "trend-analysis"]
+}
