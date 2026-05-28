@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -11,7 +12,7 @@ from config import settings
 from routes_dashboard import router as dashboard_router
 from routes_reports import router as reports_router
 from routes_settings import _config as _agent_config
-from routes_settings import _run_opsgenie_sync, load_config_from_db, router as settings_router
+from routes_settings import _run_opsgenie_sync, _sync_changed, load_config_from_db, router as settings_router
 from tools.dashboard_builder import DashboardBuilderTool
 from tools.noise_detector import NoiseDetectorTool
 from tools.source import FileSource
@@ -75,6 +76,17 @@ async def _init_config() -> None:
 
     logger.info("_init_config: config loaded from DB — source_type: %s", db_cfg.get("source_type", "file"))
 
+    # DB values take priority over env vars for runtime-tunable thresholds.
+    if "noise_threshold_repeat" in db_cfg:
+        settings.noise_threshold_repeat = db_cfg["noise_threshold_repeat"]
+    if "noise_threshold_close_secs" in db_cfg:
+        settings.noise_threshold_close_secs = db_cfg["noise_threshold_close_secs"]
+    logger.info(
+        "_init_config: noise thresholds — repeat=%d, close_secs=%d",
+        settings.noise_threshold_repeat,
+        settings.noise_threshold_close_secs,
+    )
+
     if (
         db_cfg.get("source_type") == "opsgenie"
         and db_cfg.get("cloud_id")
@@ -89,16 +101,62 @@ async def _init_config() -> None:
             logger.exception("OpsGenie auto-sync failed")
 
 
+async def _sync_loop() -> None:
+    """Background sync task.
+
+    Reads sync_interval_minutes from _agent_config on every tick so changes
+    made via the Settings UI take effect immediately — no restart required.
+    Parks on _sync_changed when disabled (interval=0).
+    """
+    logger.info("Auto-sync loop started")
+    while True:
+        _sync_changed.clear()
+        interval = _agent_config.get("sync_interval_minutes", 0)
+
+        if interval <= 0:
+            await _sync_changed.wait()
+            continue
+
+        try:
+            await asyncio.wait_for(_sync_changed.wait(), timeout=interval * 60)
+            continue  # settings changed mid-sleep — re-evaluate immediately
+        except asyncio.TimeoutError:
+            pass
+
+        if (
+            _agent_config.get("source_type") == "opsgenie"
+            and _agent_config.get("cloud_id")
+            and _agent_config.get("email")
+            and _agent_config.get("api_token")
+        ):
+            try:
+                result = await _run_opsgenie_sync()
+                logger.info("Auto-sync: %d alerts loaded", result["alert_count"])
+            except Exception:
+                logger.exception("Auto-sync: sync failed")
+        else:
+            logger.debug("Auto-sync: OpsGenie not fully configured — skipping tick")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
         await _init_config()
     except Exception:
         logger.exception("Config initialisation raised an unexpected exception (agent will still start)")
+
+    sync_task = asyncio.create_task(_sync_loop())
+
     yield
 
+    sync_task.cancel()
+    try:
+        await sync_task
+    except asyncio.CancelledError:
+        pass
 
-app = FastAPI(title=settings.agent_name, version="1.0.0", lifespan=lifespan)
+
+app = FastAPI(title=settings.agent_name, version="1.1.0", lifespan=lifespan)
 app.include_router(dashboard_router)
 app.include_router(reports_router)
 app.include_router(settings_router)

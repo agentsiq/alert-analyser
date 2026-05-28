@@ -16,9 +16,12 @@ class Settings(BaseSettings):
     # Database — required for persistent settings (API key storage, OpsGenie credentials)
     database_url: str = ""
 
-    # Noise classification thresholds
+    # Noise classification thresholds (overridden by DB values at runtime if saved via Settings UI)
     noise_threshold_repeat: int = 3      # aliases firing >N times in 1 hour are noise
     noise_threshold_close_secs: int = 300  # auto-close in <N seconds is noise
+
+    # Auto-sync interval; 0 disables the background task
+    sync_interval_minutes: int = 0
 
     # Server
     port: int = 8080

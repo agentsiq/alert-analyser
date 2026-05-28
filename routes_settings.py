@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -7,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from config import settings
 from encryption import decrypt, encrypt, is_secret_key
 from report_store import add_report
 from tools.noise_detector import classify_alerts
@@ -23,10 +25,16 @@ _DEFAULTS: dict = {
     "api_token": "",
     "last_synced": None,
     "alert_count": None,
+    "sync_interval_minutes": 0,
+    "noise_threshold_repeat": 3,
+    "noise_threshold_close_secs": 300,
 }
 
 # Write-through in-memory cache; populated from DB on startup.
 _config: dict = dict(_DEFAULTS)
+
+# Fired whenever settings are saved so the background sync loop re-evaluates immediately.
+_sync_changed = asyncio.Event()
 
 
 async def _upsert(key: str, value) -> None:
@@ -41,9 +49,9 @@ async def _upsert(key: str, value) -> None:
     async with SessionLocal() as session:
         stmt = (
             pg_insert(AgentConfig)
-            .values(key=key, value=stored, updated_at=now)
+            .values(agent_slug=settings.agent_slug, key=key, value=stored, updated_at=now)
             .on_conflict_do_update(
-                index_elements=["key"],
+                index_elements=["agent_slug", "key"],
                 set_={"value": stored, "updated_at": now},
             )
         )
@@ -61,7 +69,11 @@ async def load_config_from_db() -> dict:
         return {}
     try:
         async with SessionLocal() as session:
-            rows = (await session.execute(select(AgentConfig))).scalars().all()
+            rows = (
+                await session.execute(
+                    select(AgentConfig).where(AgentConfig.agent_slug == settings.agent_slug)
+                )
+            ).scalars().all()
 
         logger.info(
             "load_config_from_db: found %d row(s) in agent_config — keys: %s",
@@ -91,6 +103,15 @@ async def load_config_from_db() -> dict:
 
         _config.update(db_cfg)
         logger.info("load_config_from_db: successfully loaded keys: %s", list(db_cfg))
+
+        # Re-encrypt any secrets stored with a previous key (or stored plaintext).
+        # Idempotent: if already encrypted with the current key this is a no-op in terms of data.
+        secret_keys = [k for k in db_cfg if is_secret_key(k) and db_cfg[k]]
+        if secret_keys:
+            for key in secret_keys:
+                await _upsert(key, db_cfg[key])
+            logger.info("load_config_from_db: re-encrypted %d secret key(s)", len(secret_keys))
+
         return db_cfg
     except Exception:
         logger.exception("load_config_from_db: DB query failed")
@@ -129,6 +150,9 @@ class SettingsPayload(BaseModel):
     email: str = ""
     api_token: str = ""
     api_key: str | None = None  # Anthropic API key — stored encrypted in DB
+    sync_interval_minutes: int = 0
+    noise_threshold_repeat: int = 3
+    noise_threshold_close_secs: int = 300
 
 
 @router.get("")
@@ -153,6 +177,7 @@ async def save_settings(payload: SettingsPayload) -> dict:
     if payload.api_key is not None:
         _config["api_key"] = payload.api_key
         await _upsert("api_key", payload.api_key)
+    _sync_changed.set()  # wake the background loop to re-evaluate interval immediately
     return {"ok": True}
 
 

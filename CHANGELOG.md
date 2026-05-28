@@ -2,6 +2,16 @@
 
 All notable changes to Alert Analyser are documented here.
 
+## [1.1.0] — 2026-05-28
+
+### Added
+
+- **Noise threshold tuning via Settings UI** — repeat count and auto-close seconds are now configurable fields on the Settings page; saved to DB and applied at runtime without a restart. DB values take priority over `NOISE_THRESHOLD_REPEAT` / `NOISE_THRESHOLD_CLOSE_SECS` env vars.
+- **Sync interval configurable via Settings UI** — dropdown on the Settings page (Disabled / 15 min / 30 min / 1 h / 6 h / 24 h); persisted to DB; background task picks up changes immediately via `asyncio.Event` — no restart required.
+- **Config persists to DB across restarts** — all settings (source type, OpsGenie credentials, noise thresholds, sync interval) are stored in the `agent_config` table and restored on startup.
+- **`agent_slug` scoping** — every `agent_config` row is keyed by `(agent_slug, key)` instead of `(key)` alone, making it safe to share a PostgreSQL instance with other agents without config rows colliding.
+- **Encryption fix** — secrets stored without an encryption key (or with a previous key) are automatically re-encrypted with the current `ENCRYPTION_KEY` on startup; eliminates `InvalidToken` log warnings after key rotation.
+
 ## [1.0.0] — 2026-05-28
 
 Initial release.
