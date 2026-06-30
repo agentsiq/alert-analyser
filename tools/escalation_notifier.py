@@ -56,7 +56,7 @@ def build_adaptive_card(
     body = [
         {
             "type": "TextBlock",
-            "text": f"{emoji} Operative Intelligence — {agent_name}",
+            "text": f"{emoji} AgentsIQ — {agent_name}",
             "weight": "Bolder",
             "size": "Medium",
             "color": colour,
@@ -211,7 +211,7 @@ async def send_anomaly_summary(
     body = [
         {
             "type": "TextBlock",
-            "text": f"{emoji} Operative Intelligence — {agent_name}",
+            "text": f"{emoji} AgentsIQ — {agent_name}",
             "weight": "Bolder",
             "size": "Medium",
             "color": colour,

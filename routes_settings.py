@@ -227,7 +227,7 @@ async def _run_opsgenie_sync(full_sync: bool = False) -> dict:
                         cluster_name="OpsGenie",
                         anomalies=escalation_anomalies,
                         config=teams_cfg,
-                        dashboard_url="http://kpi-internal.cloud.operative.com:3000/agents/alert-analyser/dashboard",
+                        dashboard_url="http://kpi-internal.cloud.agentsiq.net:3000/agents/alert-analyser/dashboard",
                     )
                     if sent:
                         _run_opsgenie_sync._summary_cooldown[cooldown_key] = now
@@ -315,7 +315,7 @@ async def test_teams_webhook(request: Request) -> dict:
     test_anomaly = {
         "severity": "info",
         "category": "test",
-        "description": "This is a test message from Operative Intelligence Alert Analyser. "
+        "description": "This is a test message from AgentsIQ Alert Analyser. "
                        "Teams escalation is configured correctly.",
         "recommended_action": "No action required — this is a connectivity test.",
     }
