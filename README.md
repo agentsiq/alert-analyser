@@ -183,7 +183,7 @@ kubectl logs <pod-name> -n <namespace>
 ## 6. Post-Deploy Configuration
 
 1. Open the Settings UI at `http://<host>:8001/ui/settings.html`
-   — or via the platform portal if using UAP/Operative
+   — or via the platform portal if using AgentsIQ Portal
 2. Enter your Anthropic API key
 3. Select a data source (start with **Synthetic Data** to verify the agent works end-to-end before connecting real systems)
 4. Click **Save & Sync**
